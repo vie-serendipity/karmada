@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -116,6 +117,11 @@ func (c *ServiceExportController) Reconcile(ctx context.Context, req controllerr
 		return controllerruntime.Result{}, err
 	}
 
+	if !helper.IsWorkSuspendDispatching(work) {
+		klog.V(4).Infof("Skip syncing work(%s/%s) for cluster(%s) as work dispatch is suspended.", work.Namespace, work.Name, clusterName)
+		return controllerruntime.Result{}, nil
+	}
+
 	cluster, err := util.GetCluster(c.Client, clusterName)
 	if err != nil {
 		klog.Errorf("Failed to get the given member cluster %s", clusterName)
@@ -151,7 +157,9 @@ func (c *ServiceExportController) RunWorkQueue() {
 func (c *ServiceExportController) enqueueReportedEpsServiceExport() {
 	workList := &workv1alpha1.WorkList{}
 	err := wait.PollUntilContextCancel(context.TODO(), 1*time.Second, true, func(ctx context.Context) (done bool, err error) {
-		err = c.List(ctx, workList, client.MatchingLabels{util.PropagationInstruction: util.PropagationInstructionSuppressed})
+		err = c.List(ctx, workList, client.MatchingFields{
+			workKeyIndex: "true",
+		})
 		if err != nil {
 			klog.Errorf("Failed to list collected EndpointSlices Work from member clusters: %v", err)
 			return false, nil
@@ -428,10 +436,10 @@ func (c *ServiceExportController) removeOrphanWork(ctx context.Context, endpoint
 	if err := c.List(ctx, collectedEpsWorkList, &client.ListOptions{
 		Namespace: names.GenerateExecutionSpaceName(serviceExportKey.Cluster),
 		LabelSelector: labels.SelectorFromSet(labels.Set{
-			util.PropagationInstruction: util.PropagationInstructionSuppressed,
-			util.ServiceNamespaceLabel:  serviceExportKey.Namespace,
-			util.ServiceNameLabel:       serviceExportKey.Name,
+			util.ServiceNamespaceLabel: serviceExportKey.Namespace,
+			util.ServiceNameLabel:      serviceExportKey.Name,
 		}),
+		FieldSelector: fields.OneTermEqualSelector(workKeyIndex, "true"),
 	}); err != nil {
 		klog.Errorf("Failed to list endpointslice work with serviceExport(%s/%s) under namespace %s: %v",
 			serviceExportKey.Namespace, serviceExportKey.Name, names.GenerateExecutionSpaceName(serviceExportKey.Cluster), err)
@@ -495,7 +503,8 @@ func reportEndpointSlice(ctx context.Context, c client.Client, endpointSlice *un
 		return err
 	}
 
-	if err := ctrlutil.CreateOrUpdateWork(ctx, c, workMeta, endpointSlice); err != nil {
+	// indicate the Work should be not propagated since it's collected resource.
+	if err := ctrlutil.CreateOrUpdateWork(ctx, c, workMeta, endpointSlice, ctrlutil.WithSuspendDispatching(true)); err != nil {
 		return err
 	}
 
@@ -518,10 +527,8 @@ func getEndpointSliceWorkMeta(ctx context.Context, c client.Client, ns string, w
 		Namespace:  ns,
 		Finalizers: []string{util.EndpointSliceControllerFinalizer},
 		Labels: map[string]string{
-			util.ServiceNamespaceLabel: endpointSlice.GetNamespace(),
-			util.ServiceNameLabel:      endpointSlice.GetLabels()[discoveryv1.LabelServiceName],
-			// indicate the Work should be not propagated since it's collected resource.
-			util.PropagationInstruction:          util.PropagationInstructionSuppressed,
+			util.ServiceNamespaceLabel:           endpointSlice.GetNamespace(),
+			util.ServiceNameLabel:                endpointSlice.GetLabels()[discoveryv1.LabelServiceName],
 			util.EndpointSliceWorkManagedByLabel: util.ServiceExportKind,
 		},
 	}
