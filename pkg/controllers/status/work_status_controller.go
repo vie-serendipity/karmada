@@ -298,10 +298,6 @@ func (c *WorkStatusController) handleDeleteEvent(ctx context.Context, key keys.F
 		return nil
 	}
 
-	if helper.IsWorkSuspendDispatching(work) {
-		return nil
-	}
-
 	reCreateErr := c.recreateResourceIfNeeded(ctx, work, key)
 	metrics.CountRecreateResourceToCluster(reCreateErr, key.GroupVersion().String(), key.Kind, key.Cluster)
 	if reCreateErr != nil {

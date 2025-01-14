@@ -19,10 +19,12 @@ package util
 import (
 	"strconv"
 
+	"k8s.io/utils/ptr"
+
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 )
 
 // GetWorkSuspendDispatching will get suspendDispatching field from work spec
 func GetWorkSuspendDispatching(spec *workv1alpha1.WorkSpec) []string {
-	return []string{strconv.FormatBool(*spec.SuspendDispatching)}
+	return []string{strconv.FormatBool(ptr.Deref(spec.SuspendDispatching, false))}
 }
