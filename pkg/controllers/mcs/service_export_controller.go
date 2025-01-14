@@ -117,11 +117,6 @@ func (c *ServiceExportController) Reconcile(ctx context.Context, req controllerr
 		return controllerruntime.Result{}, err
 	}
 
-	if !helper.IsWorkSuspendDispatching(work) {
-		klog.V(4).Infof("Skip syncing work(%s/%s) for cluster(%s) as work dispatch is suspended.", work.Namespace, work.Name, clusterName)
-		return controllerruntime.Result{}, nil
-	}
-
 	cluster, err := util.GetCluster(c.Client, clusterName)
 	if err != nil {
 		klog.Errorf("Failed to get the given member cluster %s", clusterName)
