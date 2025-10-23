@@ -270,7 +270,8 @@ func (d *ResourceDetector) HandleDeprioritizedPropagationPolicy(oldPolicy policy
 	// higher priority PropagationPolicy be process first to avoid possible
 	// multiple preemption.
 	sortedPotentialKeys := pq.NewWith(priorityDescendingComparator)
-	for _, potentialPolicy := range policyList.Items {
+	for idx := range policyList.Items {
+		potentialPolicy := &policyList.Items[idx]
 		// Re-queue the polies that enables preemption and with the priority
 		// in range (new priority, old priority).
 		// For the polices with higher priority than old priority, it can
@@ -283,7 +284,7 @@ func (d *ResourceDetector) HandleDeprioritizedPropagationPolicy(oldPolicy policy
 			potentialPolicy.ExplicitPriority() < oldPolicy.ExplicitPriority() {
 			klog.Infof("Enqueuing PropagationPolicy(%s/%s) in case of PropagationPolicy(%s/%s) priority changes.", potentialPolicy.GetNamespace(), potentialPolicy.GetName(), newPolicy.GetNamespace(), newPolicy.GetName())
 			sortedPotentialKeys.Enqueue(&PriorityKey{
-				Object:   &potentialPolicy,
+				Object:   potentialPolicy,
 				Priority: potentialPolicy.ExplicitPriority(),
 			})
 		}
@@ -314,7 +315,8 @@ func (d *ResourceDetector) HandleDeprioritizedClusterPropagationPolicy(oldPolicy
 	// higher priority ClusterPropagationPolicy be process first to avoid possible
 	// multiple preemption.
 	sortedPotentialKeys := pq.NewWith(priorityDescendingComparator)
-	for _, potentialPolicy := range policyList.Items {
+	for idx := range policyList.Items {
+		potentialPolicy := &policyList.Items[idx]
 		// Re-queue the polies that enables preemption and with the priority
 		// in range (new priority, old priority).
 		// For the polices with higher priority than old priority, it can
@@ -328,7 +330,7 @@ func (d *ResourceDetector) HandleDeprioritizedClusterPropagationPolicy(oldPolicy
 			klog.Infof("Enqueuing ClusterPropagationPolicy(%s) in case of ClusterPropagationPolicy(%s) priority changes.",
 				potentialPolicy.GetName(), newPolicy.GetName())
 			sortedPotentialKeys.Enqueue(&PriorityKey{
-				Object:   &potentialPolicy,
+				Object:   potentialPolicy,
 				Priority: potentialPolicy.ExplicitPriority(),
 			})
 		}

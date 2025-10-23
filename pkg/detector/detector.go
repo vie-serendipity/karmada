@@ -399,12 +399,13 @@ func (d *ResourceDetector) LookForMatchedPolicy(object *unstructured.Unstructure
 		return nil, nil
 	}
 	policies := make([]*policyv1alpha1.PropagationPolicy, 0, len(policyList.Items))
-	for _, policy := range policyList.Items {
+	for idx := range policyList.Items {
+		policy := &policyList.Items[idx]
 		if !policy.DeletionTimestamp.IsZero() {
 			klog.V(4).Infof("Propagation policy(%s/%s) cannot match any resource template because it's being deleted.", policy.Namespace, policy.Name)
 			continue
 		}
-		policies = append(policies, &policy)
+		policies = append(policies, policy.DeepCopy())
 	}
 
 	return getHighestPriorityPropagationPolicy(policies, object, objectKey), nil
@@ -427,12 +428,13 @@ func (d *ResourceDetector) LookForMatchedClusterPolicy(object *unstructured.Unst
 	}
 
 	policies := make([]*policyv1alpha1.ClusterPropagationPolicy, 0, len(policyList.Items))
-	for _, policy := range policyList.Items {
+	for idx := range policyList.Items {
+		policy := &policyList.Items[idx]
 		if !policy.DeletionTimestamp.IsZero() {
 			klog.V(4).Infof("Cluster propagation policy(%s) cannot match any resource template because it's being deleted.", policy.Name)
 			continue
 		}
-		policies = append(policies, &policy)
+		policies = append(policies, policy.DeepCopy())
 	}
 
 	return getHighestPriorityClusterPropagationPolicy(policies, object, objectKey), nil
@@ -1211,7 +1213,8 @@ func (d *ResourceDetector) HandlePropagationPolicyCreationOrUpdate(policy *polic
 	if err != nil {
 		return err
 	}
-	for _, rb := range resourceBindings.Items {
+	for idx := range resourceBindings.Items {
+		rb := &resourceBindings.Items[idx]
 		resourceKey, err := helper.ConstructClusterWideKey(rb.Spec.Resource)
 		if err != nil {
 			return err
@@ -1278,14 +1281,16 @@ func (d *ResourceDetector) HandleClusterPropagationPolicyCreationOrUpdate(policy
 	if err != nil {
 		return err
 	}
-	for _, rb := range resourceBindings.Items {
+	for idx := range resourceBindings.Items {
+		rb := &resourceBindings.Items[idx]
 		resourceKey, err := helper.ConstructClusterWideKey(rb.Spec.Resource)
 		if err != nil {
 			return err
 		}
 		d.enqueueResourceTemplateForPolicyChange(resourceKey, policy.Spec.ActivationPreference)
 	}
-	for _, crb := range clusterResourceBindings.Items {
+	for idx := range clusterResourceBindings.Items {
+		crb := &clusterResourceBindings.Items[idx]
 		resourceKey, err := helper.ConstructClusterWideKey(crb.Spec.Resource)
 		if err != nil {
 			return err

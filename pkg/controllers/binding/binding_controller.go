@@ -225,7 +225,8 @@ func (c *ResourceBindingController) newOverridePolicyFunc() handler.MapFunc {
 		}
 
 		var requests []reconcile.Request
-		for _, binding := range readonlyBindingList.Items {
+		for idx := range readonlyBindingList.Items {
+			binding := &readonlyBindingList.Items[idx]
 			// Nil resourceSelectors means matching all resources.
 			if len(overrideRS) == 0 {
 				klog.V(2).InfoS("Enqueue ResourceBinding as override policy changes", "namespace", binding.Namespace,
