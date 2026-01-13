@@ -64,6 +64,11 @@ import (
 	"github.com/karmada-io/karmada/pkg/util/restmapper"
 )
 
+type hasCache interface {
+	manager.Runnable
+	GetCache() ctrlcache.Cache
+}
+
 // ResourceDetector is a resource watcher which watches all resources and reconcile the events.
 type ResourceDetector struct {
 	// DiscoveryClientSet is used to resource discovery.
@@ -84,6 +89,8 @@ type ResourceDetector struct {
 	// policyReconcileWorker maintains a rate limited queue which used to store PropagationPolicy's key and
 	// a reconcile function to consume the items in queue.
 	policyReconcileWorker util.AsyncPriorityWorker
+
+	syncedCh chan struct{}
 
 	// clusterPolicyReconcileWorker maintains a rate limited queue which used to store ClusterPropagationPolicy's key and
 	// a reconcile function to consume the items in queue.
@@ -111,6 +118,7 @@ type ResourceDetector struct {
 // Start runs the detector, never stop until context canceled.
 func (d *ResourceDetector) Start(ctx context.Context) error {
 	klog.Infof("Starting resource detector.")
+	d.syncedCh = make(chan struct{})
 	d.waitingObjects = make(map[keys.ClusterWideKey]struct{})
 
 	// setup policy reconcile worker
@@ -170,6 +178,7 @@ func (d *ResourceDetector) Start(ctx context.Context) error {
 	}
 
 	d.EventHandler = fedinformer.NewFilteringHandlerOnAllEvents(d.EventFilter, d.OnAdd, d.OnUpdate, d.OnDelete)
+	d.initCache()
 	go d.discoverResources(ctx, 30*time.Second)
 
 	<-ctx.Done()
@@ -177,11 +186,30 @@ func (d *ResourceDetector) Start(ctx context.Context) error {
 	return nil
 }
 
+func (d *ResourceDetector) GetCache() ctrlcache.Cache {
+	return cacheAdapter{syncedCh: d.syncedCh}
+}
+
 // Check if our ResourceDetector implements necessary interfaces
 var (
 	_ manager.Runnable               = &ResourceDetector{}
 	_ manager.LeaderElectionRunnable = &ResourceDetector{}
+	_ hasCache                       = &ResourceDetector{}
 )
+
+func (d *ResourceDetector) initCache() {
+	newResources := lifted.GetDeletableResources(d.DiscoveryClientSet)
+	for r := range newResources {
+		if d.InformerManager.IsHandlerExist(r, d.EventHandler) || d.gvrDisabled(r) {
+			continue
+		}
+		klog.Infof("Setup informer for %s", r.String())
+		d.InformerManager.ForResource(r, d.EventHandler)
+	}
+	d.InformerManager.Start()
+	d.InformerManager.WaitForCacheSync()
+	close(d.syncedCh)
+}
 
 func (d *ResourceDetector) discoverResources(ctx context.Context, period time.Duration) {
 	wait.Until(func() {
@@ -1498,4 +1526,18 @@ func (d *ResourceDetector) enqueueResourceTemplateForPolicyChange(key keys.Clust
 	//    this allows user-triggered modifications to resourceTemplates
 	//    to be prioritized for handling.
 	d.Processor.AddWithOpts(util.AddOpts{Priority: ptr.To(util.LowPriority)}, enqueueKey)
+}
+
+type cacheAdapter struct {
+	ctrlcache.Cache
+	syncedCh chan struct{}
+}
+
+func (c cacheAdapter) WaitForCacheSync(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-c.syncedCh:
+		return true
+	}
 }

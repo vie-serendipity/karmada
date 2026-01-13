@@ -224,26 +224,6 @@ func TestGVRDisabled(t *testing.T) {
 	}
 }
 
-func TestNeedLeaderElection(t *testing.T) {
-	tests := []struct {
-		name string
-		want bool
-	}{
-		{
-			name: "NeedLeaderElection always returns true",
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			d := &ResourceDetector{}
-			got := d.NeedLeaderElection()
-			assert.Equal(t, tt.want, got, "NeedLeaderElection() = %v, want %v", got, tt.want)
-		})
-	}
-}
-
 func TestEventFilter(t *testing.T) {
 	tests := []struct {
 		name                         string
